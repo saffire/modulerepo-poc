@@ -1,0 +1,104 @@
+#!/usr/bin/php
+<?php
+define('REPOSITORY_FILE', 'repositories.list');
+
+if ($argc < 3) {
+	echo
+	   	"Usage: \n" .
+		"saffire module <option>\n" .
+		"saffire module repo <option>\n\n";
+
+	return;
+}
+
+if ($argv[1] == 'module' && $argv[2] == 'repo') {
+
+	if (empty($argv[3])) {
+		echo "No command passed...\n";
+		return;
+	}
+
+	switch($argv[3]) {
+		case 'list':
+			listRepositories();
+			return;
+
+		case 'add':
+			if ( empty($argv[4]) || empty($argv[5])) {
+				echo "Usage: saffire module repo add <alias> <location>\n";
+				return;
+			}
+			addRepository($argv[4], $argv[5]);
+			return;
+
+		case 'remove':
+			if (empty($argv[4])) {
+				echo "Usage: saffire module repo remove <alias>";
+				return;
+			}
+			removeRepository($argv[4]);
+			return;
+
+		default:
+			echo "Unknown command...\n";
+			return;
+	}
+} else {
+	$option = $argv[3];
+}
+
+
+function listRepositories()
+{
+	if (file_exists(REPOSITORY_FILE)) {
+		$lines = file(REPOSITORY_FILE);
+
+		echo "Known repositories:\n\n";
+		foreach ($lines as $line) {
+			echo "$line";
+		}
+		echo "\n";
+	} else {
+		echo "No known repositories.\n";
+	}
+}
+
+function addRepository($alias, $url) 
+{
+
+	if ( ! file_exists(REPOSITORY_FILE)) {
+		touch(REPOSITORY_FILE);
+	}
+
+	$lines = file(REPOSITORY_FILE);
+	foreach ($lines as $line) {
+		list($existingAlias, $existingUrl) = explode(' ', $line);
+
+		if ($alias == $existingAlias) {
+			echo "Alias is already in use, find another one...\n";
+			return;
+		}
+	}
+
+	file_put_contents(REPOSITORY_FILE, "$alias $url\n", FILE_APPEND);
+}
+
+function removeRepository($alias)
+{
+	if ( ! file_exists(REPOSITORY_FILE)) {
+		echo "No repositories registered...\n";
+		return;
+	}
+
+	$lines = file(REPOSITORY_FILE);
+
+	for ($i = 0; $i < count($lines); $i++) {
+		list($existingAlias, $existingUrl) = explode(' ', $lines[$i]);
+
+		if ($alias == $existingAlias) {
+			unset($lines[$i]);	
+		}
+	}
+
+	file_put_contents(REPOSITORY_FILE, implode("\n", $lines));
+}
