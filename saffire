@@ -1,6 +1,8 @@
 #!/usr/bin/php
 <?php
 define('REPOSITORY_FILE', 'repositories.list');
+define('MODULE_CACHE_FILE', 'modules.cache');
+
 
 if ($argc < 3) {
 	echo
@@ -33,7 +35,7 @@ if ($argv[1] == 'module' && $argv[2] == 'repo') {
 
 		case 'remove':
 			if (empty($argv[4])) {
-				echo "Usage: saffire module repo remove <alias>";
+				echo "Usage: saffire module repo remove <alias>\n";
 				return;
 			}
 			removeRepository($argv[4]);
@@ -43,8 +45,29 @@ if ($argv[1] == 'module' && $argv[2] == 'repo') {
 			echo "Unknown command...\n";
 			return;
 	}
+} else if ($argv[1] == 'module') {
+	if (empty($argv[2])) {
+		echo "Usage: saffire module <command> <options>\n";
+		return;
+	}
+
+	switch ($argv[2]) {
+		case 'update':
+			updateModuleInfo();
+			return;
+
+		case 'info':
+			if (empty($argv[3])) {
+				echo "Usage: saffire module info <module>\n";
+				return;
+			} else {
+				getModuleInfo($argv[3]);
+			}
+			return;
+	}
+
 } else {
-	$option = $argv[3];
+	echo "Unsupported option...\n";
 }
 
 
@@ -101,4 +124,88 @@ function removeRepository($alias)
 	}
 
 	file_put_contents(REPOSITORY_FILE, implode("\n", $lines));
+}
+
+function updateModuleInfo()
+{
+	if ( ! file_exists(REPOSITORY_FILE)) {
+		echo "No repositories, no module information found\n";
+	}	
+
+	$lines = file(REPOSITORY_FILE);
+
+	foreach ($lines as $line) {
+		list($moduleAlias, $moduleUrl) = explode(' ', $line);
+
+		$moduleContents = @file_get_contents(trim($moduleUrl) . 'contents.yml');
+
+		if ( ! $moduleContents) {
+			continue;
+		}
+
+		$moduleListing = yaml_parse($moduleContents);
+		
+		$cacheContent = "---\nmodules: \t\n";
+		$tmpDir = sys_get_temp_dir();
+		foreach ($moduleListing['modules'] as $moduleName) {
+			$cacheContent .= buildModuleCacheContent($moduleUrl, $moduleName, $tmpDir);
+		}
+
+		file_put_contents(MODULE_CACHE_FILE, $cacheContent);
+		echo "Updated local module information\n";
+	}
+}
+
+function buildModuleCacheContent($moduleUrl, $moduleName, $tmpDir) 
+{
+	$contents = @file_get_contents(trim($moduleUrl) . 'contents/' . $moduleName . '.sfm');
+
+	if ($contents) {
+		$fileName = $tmpDir . '/saffire-module-download-' . $moduleName . '-' . uniqid();
+		
+		file_put_contents($fileName, $contents);
+		$dirName = $tmpDir . '/saffire/' . $moduleName;
+		if (is_dir($dirName)) {
+			`rm -Rf $dirName`;
+		}
+
+		mkdir($dirName, 0755, true);
+		`tar -zxvf $fileName -C $tmpDir/saffire/`;
+
+		$authors = file($dirName . '/.meta/author');
+		$descriptionLines = file("$dirName/.meta/description");
+		$description = array_shift($descriptionLines);
+		return getModuleCacheModuleEntry($moduleName, $authors, $description);				
+	}
+
+	return '';
+}
+
+function getModuleCacheModuleEntry($moduleName, $authors, $description)
+{
+
+	$authorString = "[";
+	$authorString .= implode(',', array_map('trim', $authors));
+	$authorString .= "]";
+
+	$template = "    $moduleName: \n        author: $authorString\n        description: \"" . trim($description). "\"\n";
+
+	return $template;
+}
+
+function getModuleInfo($moduleName)
+{
+	$contents = @file_get_contents(MODULE_CACHE_FILE);
+	if ($contents) {
+		$modules = yaml_parse($contents);
+
+		if (array_key_exists('modules', $modules) && array_key_exists($moduleName, $modules['modules'])) {
+			$moduleInfo = $modules['modules'][$moduleName];
+			echo "\nModule: $moduleName\n------------------\n";
+			echo "Description: " . $moduleInfo['description'] . "\n";
+			echo "Authors: " . implode(', ', $moduleInfo['author']) . "\n\n";
+		} else {
+			echo "Unknown module: $moduleName...\n";
+		}
+	}
 }
